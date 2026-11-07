@@ -1,0 +1,101 @@
+# One run of one job: record it, run the command, write the log, record how it ended.
+
+fn Run run_record(Job job, string trigger_kind, string status)
+	(job_id, name) in job
+
+	int run_id = 0
+	string job_name = name
+	int started_at = n_now()
+	int finished_at = 0
+	int exit_code = -1
+	string note = ""
+	Run record = (run_id, job_id, job_name, started_at, finished_at, status, exit_code, trigger_kind, note)
+
+	return record
+
+
+# A run that never started because the computer was asleep or the job was still running.
+fn void record_skip(Database store, Job job, string note)
+	string trigger_kind = "schedule"
+	string status = "skipped"
+	Run base = run_record(job, trigger_kind, status)
+	int finished_at = n_now()
+	Run skipped = base with (finished_at, note)
+	int skipped_id = db_insert_run(store, skipped)
+
+
+# Turns the command's exit code into the finished record, with a plain-English reason when it failed.
+fn Run finished_run(Run started, int exit_code)
+	const int SIGNAL_KILLED = -1
+	const int NOT_STARTED = -2
+
+	string status = "failed"
+	string note = ""
+	if exit_code is 0
+		status = "ok"
+	else if exit_code is SIGNAL_KILLED
+		note = "Failed: the command was stopped by a signal"
+	else if exit_code is NOT_STARTED
+		note = "Failed: the command could not be started (check the folder)"
+	else
+		string code_text = c_int_to_string(exit_code)
+		note = s_join(["Failed: the command exited with code ", code_text])
+	int finished_at = n_now()
+	Run finished = started with (status, note, exit_code, finished_at)
+
+	return finished
+
+
+fn void write_log_header(string log_path, Job job)
+	(name, cwd, command) in job
+
+	int now_time = n_now()
+	string stamp = time_format(now_time)
+	string newline = "\n"
+	string prefixed = "\n$ "
+	string shown = s_replace(command, newline, prefixed)
+	string text = s_join(["[", stamp, "] Starting \"", name, "\" in ", cwd, "\n$ ", shown, "\n\n"])
+	bool written = f_append(log_path, text)
+
+
+fn void write_log_footer(string log_path, Run finished)
+	(status, note, finished_at) in finished
+
+	string stamp = time_format(finished_at)
+	string message = note
+	if status is "ok"
+		message = "Finished OK"
+	string text = s_join(["\n[", stamp, "] ", message, "\n"])
+	bool written = f_append(log_path, text)
+
+
+fn void execute_job(Database store, Job job, string trigger)
+	(cwd, command) in job
+
+	string status = "running"
+	Run record = run_record(job, trigger, status)
+	int run_id = db_insert_run(store, record)
+	Run started = record with (run_id)
+
+	string log_path = log_file_path(run_id)
+	write_log_header(log_path, job)
+	string folder = expand_home(cwd)
+	int exit_code = run_command(folder, command, log_path)
+
+	Run finished = finished_run(started, exit_code)
+	write_log_footer(log_path, finished)
+	db_finish_run(store, finished)
+
+
+fn string expand_home(string path)
+	string tilde = "~"
+	bool has_tilde = s_starts_with(path, tilde)
+	if has_tilde
+		string home = home_directory()
+		int start = 1
+		int stop = len(path)
+		string rest = s_substring(path, start, stop)
+
+		return s_join([home, rest])
+
+	return path

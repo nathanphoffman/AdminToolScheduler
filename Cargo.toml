@@ -1,7 +1,7 @@
 [package]
 name = "jobrunner"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 anyhow = "1.0.104"
@@ -10,3 +10,7 @@ dirs = "7.0.0"
 eframe = "0.37.0"
 ksni = { version = "0.3.7", features = ["blocking"] }
 rusqlite = { version = "0.41.1", features = ["bundled"] }
+
+[[bin]]
+name = "jobrunner"
+path = "build/main.rs"

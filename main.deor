@@ -1,0 +1,17 @@
+import "imports.deor"
+
+rust
+	#[path = "../rust/tray.rs"]
+	mod tray;
+	#[path = "../rust/ui.rs"]
+	mod ui;
+
+fn void main()
+	(first) in args()
+
+	if first is "ui"
+		ui_run()
+	else if first is "daemon" or first is ""
+		daemon_run()
+	else
+		crash("Unknown command. Use 'daemon' (default) or 'ui'.")

@@ -1,6 +1,5 @@
-use crate::db::{self, Job, Run};
+use crate::{Database, Job, Run};
 use eframe::egui::{self, Color32, RichText};
-use rusqlite::Connection;
 use std::time::{Duration, Instant};
 
 #[derive(PartialEq)]
@@ -10,7 +9,7 @@ enum Tab {
 }
 
 pub struct App {
-    conn: Connection,
+    conn: Database,
     tab: Tab,
     jobs: Vec<Job>,
     runs: Vec<Run>,
@@ -23,6 +22,8 @@ pub struct App {
     editing: Option<Job>,
     edit_hour: String,
     edit_min: String,
+    edit_num: String,
+    edit_hours: bool,
     error: Option<String>,
 }
 
@@ -53,7 +54,7 @@ fn status_label(s: &str) -> &'static str {
 }
 
 fn duration_text(r: &Run) -> String {
-    let end = r.finished_at.unwrap_or_else(db::now);
+    let end = if r.finished_at == 0 { crate::n_now() } else { r.finished_at };
     let s = (end - r.started_at).max(0);
     if s >= 3600 {
         format!("{}h {}m", s / 3600, (s % 3600) / 60)
@@ -65,7 +66,7 @@ fn duration_text(r: &Run) -> String {
 }
 
 impl App {
-    pub fn new(conn: Connection) -> Self {
+    pub fn new(conn: Database) -> Self {
         let mut a = App {
             conn,
             tab: Tab::Jobs,
@@ -80,6 +81,8 @@ impl App {
             editing: None,
             edit_hour: String::new(),
             edit_min: String::new(),
+            edit_num: "1".into(),
+            edit_hours: true,
             error: None,
         };
         a.refresh();
@@ -88,12 +91,13 @@ impl App {
 
     fn refresh(&mut self) {
         self.last_refresh = Instant::now();
-        self.jobs = db::list_jobs(&self.conn).unwrap_or_default();
-        self.runs = db::list_runs(&self.conn, self.filter_job, 300).unwrap_or_default();
-        self.daemon_alive = db::get_meta(&self.conn, "heartbeat").map(|h| db::now() - h < 15).unwrap_or(false);
+        self.jobs = crate::db_list_jobs(self.conn.clone());
+        self.runs = crate::db_list_runs(self.conn.clone(), self.filter_job.unwrap_or(0));
+        let heartbeat = crate::db_get_meta(self.conn.clone(), "heartbeat".to_string());
+        self.daemon_alive = heartbeat > 0 && crate::n_now() - heartbeat < 15;
 
         if let Some(id) = self.selected_run {
-            let finished = self.runs.iter().find(|r| r.id == id).map(|r| r.status != "running").unwrap_or(true);
+            let finished = self.runs.iter().find(|r| r.run_id == id).map(|r| r.status != "running").unwrap_or(true);
             if self.log_for != Some((id, finished)) {
                 self.log_text = read_log(id);
                 self.log_for = Some((id, finished));
@@ -103,6 +107,27 @@ impl App {
         }
     }
 
+    fn begin_edit(&mut self, job: Job) {
+        if job.sched_kind == "daily" {
+            self.edit_hour = format!("{:02}", job.sched_value / 60);
+            self.edit_min = format!("{:02}", job.sched_value % 60);
+            self.edit_num = "1".into();
+            self.edit_hours = true;
+        } else {
+            self.edit_hour = "03".into();
+            self.edit_min = "00".into();
+            if job.sched_value % 60 == 0 {
+                self.edit_num = (job.sched_value / 60).to_string();
+                self.edit_hours = true;
+            } else {
+                self.edit_num = job.sched_value.to_string();
+                self.edit_hours = false;
+            }
+        }
+        self.error = None;
+        self.editing = Some(job);
+    }
+
     fn last_run_of(&self, job_id: i64) -> Option<&Run> {
         self.runs.iter().find(|r| r.job_id == job_id && r.status != "skipped")
     }
@@ -110,9 +135,7 @@ impl App {
     fn jobs_tab(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui.button("+ New job").clicked() {
-                self.edit_hour = "03".into();
-                self.edit_min = "00".into();
-                self.editing = Some(Job::blank());
+                self.begin_edit(crate::blank_job());
             }
         });
         ui.add_space(6.0);
@@ -128,41 +151,44 @@ impl App {
                         if ui.checkbox(&mut enabled, "").on_hover_text("Run this job on its schedule").changed() {
                             let mut j = job.clone();
                             j.enabled = enabled;
-                            let _ = db::save_job(&self.conn, &j);
+                            crate::db_save_job(self.conn.clone(), j);
                             changed = true;
                         }
                         ui.label(RichText::new(&job.name).strong().size(16.0));
-                        ui.label(RichText::new(job.schedule_text()).color(GREY));
+                        ui.label(RichText::new(crate::schedule_text(job.clone())).color(GREY));
                         if !job.enabled {
                             ui.label(RichText::new("(off)").color(AMBER));
+                        } else {
+                            let next_run = crate::db_get_meta(self.conn.clone(), format!("next_{}", job.job_id));
+                            if next_run > 0 {
+                                ui.label(RichText::new(format!("next run {}", crate::time_format(next_run))).color(GREY));
+                            }
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("Edit").clicked() {
-                                self.edit_hour = format!("{:02}", job.sched_value / 60);
-                                self.edit_min = format!("{:02}", job.sched_value % 60);
-                                self.editing = Some(job.clone());
+                                self.begin_edit(job.clone());
                             }
                             if ui.button("Run now").clicked() {
-                                let _ = db::request_run(&self.conn, job.id);
+                                crate::db_request_run(self.conn.clone(), job.job_id);
                             }
                         });
                     });
-                    match self.last_run_of(job.id).cloned() {
+                    match self.last_run_of(job.job_id).cloned() {
                         Some(r) => {
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new(status_label(&r.status)).color(status_color(&r.status)).strong());
-                                ui.label(format!("{} ({})", db::fmt_time(r.started_at), duration_text(&r)));
+                                ui.label(format!("{} ({})", crate::time_format(r.started_at), duration_text(&r)));
                                 if ui.link("view log").clicked() {
                                     self.tab = Tab::History;
                                     self.filter_job = None;
-                                    self.selected_run = Some(r.id);
+                                    self.selected_run = Some(r.run_id);
                                     self.log_for = None;
                                     changed = true;
                                 }
                             });
                             if r.status == "failed" {
-                                if let Some(n) = &r.note {
-                                    ui.label(RichText::new(n).color(RED));
+                                if !r.note.is_empty() {
+                                    ui.label(RichText::new(&r.note).color(RED));
                                 }
                             }
                         }
@@ -183,13 +209,13 @@ impl App {
             ui.label("Job:");
             let current = self
                 .filter_job
-                .and_then(|id| self.jobs.iter().find(|j| j.id == id).map(|j| j.name.clone()))
+                .and_then(|id| self.jobs.iter().find(|j| j.job_id == id).map(|j| j.name.clone()))
                 .unwrap_or_else(|| "All jobs".into());
             let mut new_filter = self.filter_job;
             egui::ComboBox::from_id_salt("filter").selected_text(current).show_ui(ui, |ui| {
                 ui.selectable_value(&mut new_filter, None, "All jobs");
                 for j in &self.jobs {
-                    ui.selectable_value(&mut new_filter, Some(j.id), &j.name);
+                    ui.selectable_value(&mut new_filter, Some(j.job_id), &j.name);
                 }
             });
             if new_filter != self.filter_job {
@@ -202,7 +228,7 @@ impl App {
         egui::Panel::left("runs_list").resizable(true).default_size(340.0).show(ui, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for r in &self.runs.clone() {
-                    let selected = self.selected_run == Some(r.id);
+                    let selected = self.selected_run == Some(r.run_id);
                     let resp = ui
                         .selectable_label(selected, "")
                         .rect;
@@ -212,10 +238,10 @@ impl App {
                         ui.label(RichText::new(status_label(&r.status)).color(status_color(&r.status)).strong());
                         ui.label(&r.job_name);
                     });
-                    let click = ui.interact(resp, ui.make_persistent_id(("run", r.id)), egui::Sense::click());
-                    ui.label(RichText::new(format!("{}  ({})", db::fmt_time(r.started_at), duration_text(r))).small().color(GREY));
+                    let click = ui.interact(resp, ui.make_persistent_id(("run", r.run_id)), egui::Sense::click());
+                    ui.label(RichText::new(format!("{}  ({})", crate::time_format(r.started_at), duration_text(r))).small().color(GREY));
                     if click.clicked() {
-                        self.selected_run = Some(r.id);
+                        self.selected_run = Some(r.run_id);
                         self.log_for = None;
                         self.refresh();
                     }
@@ -224,19 +250,19 @@ impl App {
             });
         });
 
-        match self.selected_run.and_then(|id| self.runs.iter().find(|r| r.id == id).cloned()) {
+        match self.selected_run.and_then(|id| self.runs.iter().find(|r| r.run_id == id).cloned()) {
             Some(r) => {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(&r.job_name).strong().size(16.0));
                     ui.label(RichText::new(status_label(&r.status)).color(status_color(&r.status)).strong());
-                    if let Some(c) = r.exit_code {
-                        ui.label(format!("exit code {c}"));
+                    if r.exit_code >= 0 {
+                        ui.label(format!("exit code {}", r.exit_code));
                     }
                     ui.label(RichText::new(format!("started by {}", r.trigger_kind)).color(GREY));
                 });
-                if let Some(n) = &r.note {
+                if !r.note.is_empty() {
                     let color = if r.status == "failed" { RED } else { AMBER };
-                    ui.label(RichText::new(n).color(color));
+                    ui.label(RichText::new(&r.note).color(color));
                 }
                 ui.separator();
                 egui::ScrollArea::both().stick_to_bottom(true).auto_shrink([false, false]).show(ui, |ui| {
@@ -258,7 +284,7 @@ impl App {
         let mut keep_open = true;
         let mut save = false;
         let mut delete = false;
-        egui::Window::new(if job.id == 0 { "New job" } else { "Edit job" })
+        egui::Window::new(if job.job_id == 0 { "New job" } else { "Edit job" })
             .collapsible(false)
             .default_width(480.0)
             .show(ctx, |ui| {
@@ -286,14 +312,9 @@ impl App {
                             ui.add(egui::TextEdit::singleline(&mut self.edit_min).desired_width(30.0));
                             ui.label("(24 hour clock)");
                         } else {
-                            let mut v = job.sched_value.max(1);
-                            ui.add(egui::DragValue::new(&mut v).range(1..=100_000).suffix(" min"));
-                            job.sched_value = v;
-                            for (label, m) in [("15 min", 15), ("30 min", 30), ("1 hour", 60), ("6 hours", 360)] {
-                                if ui.small_button(label).clicked() {
-                                    job.sched_value = m;
-                                }
-                            }
+                            ui.add(egui::TextEdit::singleline(&mut self.edit_num).desired_width(50.0));
+                            ui.selectable_value(&mut self.edit_hours, false, "minutes");
+                            ui.selectable_value(&mut self.edit_hours, true, "hours");
                         }
                     });
                     ui.end_row();
@@ -301,6 +322,25 @@ impl App {
                     ui.checkbox(&mut job.enabled, "Enabled");
                     ui.end_row();
                 });
+                let summary = if job.sched_kind == "daily" {
+                    match (self.edit_hour.trim().parse::<i64>(), self.edit_min.trim().parse::<i64>()) {
+                        (Ok(h), Ok(m)) if (0..24).contains(&h) && (0..60).contains(&m) => {
+                            format!("Currently set to: Daily at {h:02}:{m:02}")
+                        }
+                        _ => "Currently set to: (enter a valid time, like 02:00)".to_string(),
+                    }
+                } else {
+                    match self.edit_num.trim().parse::<i64>() {
+                        Ok(n) if n >= 1 => {
+                            let mins = if self.edit_hours { n * 60 } else { n };
+                            let mut tmp = job.clone();
+                            tmp.sched_value = mins;
+                            format!("Currently set to: {}", crate::schedule_text(tmp))
+                        }
+                        _ => "Currently set to: (enter a whole number, 1 or more)".to_string(),
+                    }
+                };
+                ui.label(RichText::new(summary).strong());
                 ui.label(RichText::new("Several lines run one after another and stop at the first one that fails.").small().color(GREY));
                 if let Some(e) = &self.error {
                     ui.colored_label(RED, e);
@@ -313,7 +353,7 @@ impl App {
                     if ui.button("Cancel").clicked() {
                         keep_open = false;
                     }
-                    if job.id != 0 && ui.button(RichText::new("Delete job").color(RED)).clicked() {
+                    if job.job_id != 0 && ui.button(RichText::new("Delete job").color(RED)).clicked() {
                         delete = true;
                     }
                 });
@@ -330,16 +370,26 @@ impl App {
                     }
                 }
             }
+            if job.sched_kind != "daily" {
+                match self.edit_num.trim().parse::<i64>() {
+                    Ok(n) if n >= 1 => job.sched_value = if self.edit_hours { n * 60 } else { n },
+                    _ => {
+                        self.error = Some("Enter a whole number of minutes or hours (1 or more)".into());
+                        self.editing = Some(job);
+                        return;
+                    }
+                }
+            }
             if job.name.trim().is_empty() || job.command.trim().is_empty() {
                 self.error = Some("A name and a command are required".into());
                 self.editing = Some(job);
                 return;
             }
-            let _ = db::save_job(&self.conn, &job);
+            crate::db_save_job(self.conn.clone(), job.clone());
             self.error = None;
             self.refresh();
         } else if delete {
-            let _ = db::delete_job(&self.conn, job.id);
+            crate::db_delete_job(self.conn.clone(), job.job_id);
             self.error = None;
             self.refresh();
         } else if keep_open {
@@ -352,7 +402,7 @@ impl App {
 
 fn read_log(run_id: i64) -> String {
     const MAX: usize = 400_000;
-    match std::fs::read(db::log_path(run_id)) {
+    match std::fs::read(crate::log_file_path(run_id)) {
         Ok(bytes) => {
             let start = bytes.len().saturating_sub(MAX);
             let mut s = String::from_utf8_lossy(&bytes[start..]).to_string();
@@ -398,7 +448,7 @@ impl eframe::App for App {
 }
 
 pub fn run() -> anyhow::Result<()> {
-    let conn = db::open()?;
+    let conn = crate::db_open();
     let opts = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([960.0, 620.0]).with_title("Job Runner"),
         ..Default::default()

@@ -89,25 +89,21 @@ impl ksni::Tray for JobTray {
     }
 }
 
-pub struct TrayState(Option<Handle<JobTray>>);
+static TRAY_HANDLE: Mutex<Option<Handle<JobTray>>> = Mutex::new(None);
 
-impl TrayState {
-    pub fn update(&self, running: usize, last_failed: bool) {
-        if let Some(h) = &self.0 {
-            h.update(|t| {
-                t.running = running;
-                t.last_failed = last_failed;
-            });
-        }
+/// Puts the icon in the system tray. Without a tray the service still runs, just without an icon.
+pub fn start() {
+    match (JobTray { running: 0, last_failed: false }).spawn() {
+        Ok(handle) => *TRAY_HANDLE.lock().unwrap() = Some(handle),
+        Err(error) => eprintln!("Could not create the tray icon: {error}"),
     }
 }
 
-pub fn start() -> TrayState {
-    match (JobTray { running: 0, last_failed: false }).spawn() {
-        Ok(h) => TrayState(Some(h)),
-        Err(e) => {
-            eprintln!("Could not create the tray icon: {e}");
-            TrayState(None)
-        }
+pub fn update(running: usize, last_failed: bool) {
+    if let Some(handle) = TRAY_HANDLE.lock().unwrap().as_ref() {
+        handle.update(|tray| {
+            tray.running = running;
+            tray.last_failed = last_failed;
+        });
     }
 }

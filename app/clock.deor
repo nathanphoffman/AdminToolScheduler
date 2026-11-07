@@ -1,0 +1,27 @@
+# Clock helpers. Anything that needs the machine's local time zone is wrapped here.
+
+fn string time_format(int stamp)
+	rust
+		use chrono::TimeZone;
+		chrono::Local.timestamp_opt(stamp, 0).single().map(|moment| moment.format("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default()
+
+fn string clock_text(int minutes)
+	rust
+		format!("{:02}:{:02}", minutes / 60, minutes % 60)
+
+# The next time the local clock shows `minutes` after midnight, strictly after from_time.
+fn int time_next_daily(int minutes, int from_time)
+	rust
+		use chrono::{Duration, Local, NaiveTime, TimeZone};
+		let from = Local.timestamp_opt(from_time, 0).single().unwrap_or_else(Local::now);
+		let wanted = NaiveTime::from_hms_opt((minutes / 60) as u32 % 24, (minutes % 60) as u32, 0).unwrap();
+		let today = from.date_naive().and_time(wanted);
+		let mut candidate = Local.from_local_datetime(&today).earliest().unwrap_or(from);
+		if candidate <= from {
+			candidate = Local.from_local_datetime(&(today + Duration::days(1))).earliest().unwrap_or(from + Duration::days(1));
+		}
+		candidate.timestamp()
+
+fn void sleep_seconds(int seconds)
+	rust
+		std::thread::sleep(std::time::Duration::from_secs(seconds.max(0) as u64));

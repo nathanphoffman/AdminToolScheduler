@@ -1,0 +1,25 @@
+# The background service: single instance, then tick forever.
+
+fn void daemon_run()
+	bool locked = instance_lock_acquire()
+	if not locked
+		crash("The job runner is already running.")
+
+	Database store = db_open()
+	db_mark_interrupted(store)
+	seed_default_jobs(store)
+	tray_start()
+
+	dueList entries = empty
+	int pause = 2
+	for if true
+		entries = scheduler_tick(store, entries)
+		publish_status(store, entries)
+		sleep_seconds(pause)
+
+
+fn void ui_run()
+	rust
+		if let Err(error) = ui::run() {
+			eprintln!("{error:#}");
+		}

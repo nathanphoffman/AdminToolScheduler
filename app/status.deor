@@ -1,0 +1,37 @@
+# What the daemon tells the outside world: a heartbeat and next-run times for the window, and the tray icon.
+
+fn void publish_next_run(Database store, DueEntry entry)
+	(entry_job, due_time) in entry
+
+	string id_text = c_int_to_string(entry_job)
+	string key = s_join(["next_", id_text])
+	db_set_meta(store, key, due_time)
+
+
+fn bool last_run_failed(Database store)
+	string status = db_last_status(store)
+	bool failed = status is "failed"
+
+	return failed
+
+
+fn void publish_status(Database store, dueList entries)
+	string heartbeat_key = "heartbeat"
+	int now_time = n_now()
+	db_set_meta(store, heartbeat_key, now_time)
+
+	for entry in entries
+		publish_next_run(store, entry)
+
+	int running = running_count()
+	bool failed = last_run_failed(store)
+	tray_update(running, failed)
+
+
+fn void tray_start()
+	rust
+		tray::start();
+
+fn void tray_update(int running, bool failed)
+	rust
+		tray::update(running as usize, failed);

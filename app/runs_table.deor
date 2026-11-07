@@ -1,0 +1,74 @@
+# The runs table, the "Run now" request queue, and the small meta table (heartbeat, next run times).
+
+fn runList db_list_runs(Database store, int job_filter)
+	rust
+		let conn = store.0.lock().unwrap();
+		let rows: rusqlite::Result<Vec<Run>> = (|| {
+			let mut statement = conn.prepare("SELECT id, job_id, job_name, started_at, finished_at, status, exit_code, trigger_kind, note FROM runs WHERE (?1 = 0 OR job_id = ?1) ORDER BY id DESC LIMIT 300")?;
+			let mapped = statement.query_map(params![job_filter], |row| run_from_row(row))?;
+			let collected: rusqlite::Result<Vec<Run>> = mapped.collect();
+			collected
+		})();
+		report(rows)
+
+fn int db_insert_run(Database store, Run run)
+	rust
+		let conn = store.0.lock().unwrap();
+		let finished = if run.finished_at == 0 { None } else { Some(run.finished_at) };
+		let code = if run.exit_code < 0 { None } else { Some(run.exit_code) };
+		let note = if run.note.is_empty() { None } else { Some(run.note.clone()) };
+		report(conn.execute("INSERT INTO runs (job_id, job_name, started_at, finished_at, status, exit_code, trigger_kind, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", params![run.job_id, run.job_name, run.started_at, finished, run.status, code, run.trigger_kind, note]));
+		conn.last_insert_rowid()
+
+fn void db_finish_run(Database store, Run run)
+	rust
+		let conn = store.0.lock().unwrap();
+		let code = if run.exit_code < 0 { None } else { Some(run.exit_code) };
+		let note = if run.note.is_empty() { None } else { Some(run.note.clone()) };
+		report(conn.execute("UPDATE runs SET finished_at = ?, status = ?, exit_code = ?, note = ? WHERE id = ?", params![run.finished_at, run.status, code, note, run.run_id]));
+
+# Runs still marked "running" when the service starts were cut off by a stop or crash.
+fn void db_mark_interrupted(Database store)
+	rust
+		let conn = store.0.lock().unwrap();
+		let now_time = n_now();
+		report(conn.execute("UPDATE runs SET status = 'interrupted', finished_at = ?, note = 'The job runner stopped while this was running' WHERE status = 'running'", params![now_time]));
+
+# The status of the newest run that actually ran (skipped and running ones do not count), or "" if none.
+fn string db_last_status(Database store)
+	rust
+		let conn = store.0.lock().unwrap();
+		let found: rusqlite::Result<Option<String>> = conn.query_row("SELECT status FROM runs WHERE status NOT IN ('skipped', 'running') ORDER BY id DESC LIMIT 1", [], |row| row.get(0)).map(Some).or_else(|error| match error {
+			rusqlite::Error::QueryReturnedNoRows => Ok(None),
+			other => Err(other),
+		});
+		report(found).unwrap_or_default()
+
+fn void db_request_run(Database store, int job_id)
+	rust
+		let conn = store.0.lock().unwrap();
+		report(conn.execute("INSERT INTO run_requests (job_id) VALUES (?)", params![job_id]));
+
+fn intList db_take_run_requests(Database store)
+	rust
+		let conn = store.0.lock().unwrap();
+		let ids: rusqlite::Result<Vec<i64>> = (|| {
+			let mut statement = conn.prepare("SELECT job_id FROM run_requests ORDER BY id")?;
+			let mapped = statement.query_map([], |row| row.get::<_, i64>(0))?;
+			let collected: rusqlite::Result<Vec<i64>> = mapped.collect();
+			let result = collected?;
+			conn.execute("DELETE FROM run_requests", [])?;
+			Ok(result)
+		})();
+		report(ids)
+
+fn void db_set_meta(Database store, string key, int value)
+	rust
+		let conn = store.0.lock().unwrap();
+		report(conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", params![key, value]));
+
+# 0 when the key was never set.
+fn int db_get_meta(Database store, string key)
+	rust
+		let conn = store.0.lock().unwrap();
+		conn.query_row("SELECT value FROM meta WHERE key = ?", params![key], |row| row.get::<_, i64>(0)).unwrap_or(0)

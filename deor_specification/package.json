@@ -1,0 +1,10 @@
+{
+  "name": "newweb",
+  "version": "0.1.0",
+  "description": "A markdown-first web framework powered by WASM",
+  "type": "module",
+  "scripts": {
+    "start": "bun server.js",
+    "update": "node update.js"
+  }
+}

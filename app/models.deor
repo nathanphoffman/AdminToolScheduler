@@ -1,0 +1,34 @@
+# The three records the job runner passes around, plus lists of them.
+# Time values are Unix seconds. A finished_at of 0 means "still running",
+# an exit_code of -1 means "no exit code", and a note of "" means "no note".
+
+struct Job
+	int job_id
+	string name
+	string cwd
+	string command
+	string sched_kind
+	int sched_value
+	bool enabled
+	int updated_at
+
+struct Run
+	int run_id
+	int job_id
+	string job_name
+	int started_at
+	int finished_at
+	string status
+	int exit_code
+	string trigger_kind
+	string note
+
+struct DueEntry
+	int entry_job
+	int entry_updated
+	int due_time
+
+shape jobList = list of Job
+shape runList = list of Run
+shape dueList = list of DueEntry
+shape intList = list of int

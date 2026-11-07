@@ -1,0 +1,83 @@
+# The scheduling loop: every tick, start whatever is due, honour "Run now" clicks, and publish status.
+
+fn DueEntry fresh_entry(Job job, int now_time)
+	(job_id, updated_at) in job
+
+	int due_time = schedule_next_due(job, now_time)
+	int entry_job = job_id
+	int entry_updated = updated_at
+	DueEntry fresh = (entry_job, entry_updated, due_time)
+
+	return fresh
+
+
+# Reuses the remembered due time unless the job was edited since, which makes it start over.
+fn DueEntry entry_for_job(dueList entries, Job job)
+	(job_id, updated_at) in job
+
+	for entry in entries
+		(entry_job, entry_updated) in entry
+		if entry_job is job_id and entry_updated is updated_at
+			return entry
+
+	int now_time = n_now()
+
+	return fresh_entry(job, now_time)
+
+
+fn void launch_job(Database store, Job job, string trigger)
+	(job_id) in job
+
+	bool claimed = running_claim(job_id)
+	if claimed
+		spawn_job_thread(job, trigger)
+	else
+		string note = "Skipped: the previous run was still going"
+		record_skip(store, job, note)
+
+
+# Starts the job if its time has come, or records a skip if the computer slept through it.
+fn DueEntry run_if_due(Database store, Job job, DueEntry entry)
+	(enabled) in job
+	(due_time) in entry
+
+	int now_time = n_now()
+	bool waiting = now_time < due_time
+	if not enabled or waiting
+		return entry
+
+	DueEntry next = fresh_entry(job, now_time)
+	bool late = schedule_is_late(now_time, due_time)
+	if late
+		string note = "Skipped: the computer was asleep or off at the scheduled time"
+		record_skip(store, job, note)
+	else
+		string trigger = "schedule"
+		launch_job(store, job, trigger)
+
+	return next
+
+
+fn void handle_run_requests(Database store, jobList jobs)
+	intList requested = db_take_run_requests(store)
+
+	for requested_id in requested
+		for job in jobs
+			(job_id) in job
+			if job_id is requested_id
+				string trigger = "manual"
+				launch_job(store, job, trigger)
+
+
+fn dueList scheduler_tick(Database store, dueList entries)
+	jobList jobs = db_list_jobs(store)
+	dueList refreshed = empty
+
+	for job in jobs
+		DueEntry entry = entry_for_job(entries, job)
+		DueEntry advanced = run_if_due(store, job, entry)
+		refreshed at end = advanced
+
+	handle_run_requests(store, jobs)
+
+	return refreshed
