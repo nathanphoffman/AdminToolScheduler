@@ -1,81 +1,85 @@
 # The scheduling loop: every tick, start whatever is due, honour "Run now" clicks, and publish status.
 
-fn DueEntry fresh_entry(Job job, int now_time)
-	(job_id, updated_at) in job
+fn DueEntry fresh_entry(Job target_job, int now_time)
+	(job_id, updated_at) in target_job
 
-	int due_time = schedule_next_due(job, now_time)
+	int due_time = schedule_next_due(target_job, now_time)
 	int entry_job = job_id
 	int entry_updated = updated_at
 	DueEntry fresh = (entry_job, entry_updated, due_time)
 
 	return fresh
 
-
 # Reuses the remembered due time unless the job was edited since, which makes it start over.
-fn DueEntry entry_for_job(dueList entries, Job job)
-	(job_id, updated_at) in job
+fn DueEntry entry_for_job(dueList entries, Job target_job)
+	(job_id, updated_at) in target_job
 
 	for entry in entries
 		(entry_job, entry_updated) in entry
+
 		if entry_job is job_id and entry_updated is updated_at
 			return entry
 
 	int now_time = n_now()
 
-	return fresh_entry(job, now_time)
+	return fresh_entry(target_job, now_time)
 
-
-fn void launch_job(Database store, Job job, string trigger)
-	(job_id) in job
+fn void launch_job(Database store, Job target_job, string trigger)
+	(job_id, folder) in target_job
 
 	bool claimed = running_claim(job_id)
+
 	if claimed
-		spawn_job_thread(job, trigger)
+		# The folder is expanded here, once, so the thread that runs the job gets a ready-to-use path.
+		folder = expand_home(folder)
+		Job expanded = target_job with (folder)
+		spawn_job_thread(expanded, trigger)
 	else
 		string note = "Skipped: the previous run was still going"
-		record_skip(store, job, note)
-
+		record_skip(store, target_job, note)
 
 # Starts the job if its time has come, or records a skip if the computer slept through it.
-fn DueEntry run_if_due(Database store, Job job, DueEntry entry)
-	(enabled) in job
+fn DueEntry run_if_due(Database store, Job target_job, DueEntry entry)
+	(enabled) in target_job
 	(due_time) in entry
 
 	int now_time = n_now()
 	bool waiting = now_time < due_time
+
 	if not enabled or waiting
 		return entry
 
-	DueEntry next = fresh_entry(job, now_time)
+	DueEntry next = fresh_entry(target_job, now_time)
 	bool late = schedule_is_late(now_time, due_time)
+
 	if late
 		string note = "Skipped: the computer was asleep or off at the scheduled time"
-		record_skip(store, job, note)
+		record_skip(store, target_job, note)
 	else
 		string trigger = "schedule"
-		launch_job(store, job, trigger)
+		launch_job(store, target_job, trigger)
 
 	return next
 
-
+# Starts every job whose 'Run now' button was pressed in the window since the last tick.
 fn void handle_run_requests(Database store, jobList jobs)
 	intList requested = db_take_run_requests(store)
 
 	for requested_id in requested
-		for job in jobs
-			(job_id) in job
+		for target_job in jobs
+			(job_id) in target_job
+
 			if job_id is requested_id
 				string trigger = "manual"
-				launch_job(store, job, trigger)
-
+				launch_job(store, target_job, trigger)
 
 fn dueList scheduler_tick(Database store, dueList entries)
 	jobList jobs = db_list_jobs(store)
 	dueList refreshed = empty
 
-	for job in jobs
-		DueEntry entry = entry_for_job(entries, job)
-		DueEntry advanced = run_if_due(store, job, entry)
+	for target_job in jobs
+		DueEntry entry = entry_for_job(entries, target_job)
+		DueEntry advanced = run_if_due(store, target_job, entry)
 		refreshed at end = advanced
 
 	handle_run_requests(store, jobs)

@@ -5,7 +5,7 @@
 struct Job
 	int job_id
 	string name
-	string cwd
+	string folder
 	string command
 	string sched_kind
 	int sched_value
@@ -29,6 +29,9 @@ struct DueEntry
 	int due_time
 
 shape jobList = list of Job
+
 shape runList = list of Run
+
 shape dueList = list of DueEntry
+
 shape intList = list of int

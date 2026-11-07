@@ -4,9 +4,8 @@ fn void publish_next_run(Database store, DueEntry entry)
 	(entry_job, due_time) in entry
 
 	string id_text = c_int_to_string(entry_job)
-	string key = s_join(["next_", id_text])
-	db_set_meta(store, key, due_time)
-
+	string meta_key = s_join(["next_", id_text])
+	db_set_meta(store, meta_key, due_time)
 
 fn bool last_run_failed(Database store)
 	string status = db_last_status(store)
@@ -14,7 +13,16 @@ fn bool last_run_failed(Database store)
 
 	return failed
 
+# The tray dot is green while anything runs, red if the newest finished run failed, otherwise blue.
+fn string tray_status_word()
+	int running = running_count()
 
+	if running > 0
+		return "running"
+
+	return "idle"
+
+# Writes what the window and tray need: a heartbeat, each job's next run, and the tray colour.
 fn void publish_status(Database store, dueList entries)
 	string heartbeat_key = "heartbeat"
 	int now_time = n_now()
@@ -23,15 +31,18 @@ fn void publish_status(Database store, dueList entries)
 	for entry in entries
 		publish_next_run(store, entry)
 
-	int running = running_count()
+	string word = tray_status_word()
 	bool failed = last_run_failed(store)
-	tray_update(running, failed)
 
+	if word is "idle" and failed
+		word = "failed"
+
+	tray_update(word)
 
 fn void tray_start()
 	rust
 		tray::start();
 
-fn void tray_update(int running, bool failed)
+fn void tray_update(string status_word)
 	rust
-		tray::update(running as usize, failed);
+		tray::update(&status_word);

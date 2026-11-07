@@ -3,29 +3,36 @@
 fn runList db_list_runs(Database store, int job_filter)
 	rust
 		let conn = store.0.lock().unwrap();
+		// An immediately-run closure, so `?` can stop at the first database error and hand it back as one Result.
 		let rows: rusqlite::Result<Vec<Run>> = (|| {
 			let mut statement = conn.prepare("SELECT id, job_id, job_name, started_at, finished_at, status, exit_code, trigger_kind, note FROM runs WHERE (?1 = 0 OR job_id = ?1) ORDER BY id DESC LIMIT 300")?;
-			let mapped = statement.query_map(params![job_filter], |row| run_from_row(row))?;
+			let mapped = statement.query_map(params![job_filter], |table_row| run_from_row(table_row))?;
 			let collected: rusqlite::Result<Vec<Run>> = mapped.collect();
 			collected
 		})();
 		report(rows)
 
-fn int db_insert_run(Database store, Run run)
+fn int db_insert_run(Database store, Run record)
 	rust
 		let conn = store.0.lock().unwrap();
-		let finished = if run.finished_at == 0 { None } else { Some(run.finished_at) };
-		let code = if run.exit_code < 0 { None } else { Some(run.exit_code) };
-		let note = if run.note.is_empty() { None } else { Some(run.note.clone()) };
-		report(conn.execute("INSERT INTO runs (job_id, job_name, started_at, finished_at, status, exit_code, trigger_kind, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", params![run.job_id, run.job_name, run.started_at, finished, run.status, code, run.trigger_kind, note]));
-		conn.last_insert_rowid()
+		let finished = if record.finished_at == 0 { None } else { Some(record.finished_at) };
+		let code = if record.exit_code < 0 { None } else { Some(record.exit_code) };
+		let note = if record.note.is_empty() { None } else { Some(record.note.clone()) };
+		let inserted = conn.execute("INSERT INTO runs (job_id, job_name, started_at, finished_at, status, exit_code, trigger_kind, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", params![record.job_id, record.job_name, record.started_at, finished, record.status, code, record.trigger_kind, note]);
+		match inserted {
+			Ok(_) => conn.last_insert_rowid(),
+			Err(error) => {
+				eprintln!("database error: {error}");
+				0
+			}
+		}
 
-fn void db_finish_run(Database store, Run run)
+fn void db_finish_run(Database store, Run record)
 	rust
 		let conn = store.0.lock().unwrap();
-		let code = if run.exit_code < 0 { None } else { Some(run.exit_code) };
-		let note = if run.note.is_empty() { None } else { Some(run.note.clone()) };
-		report(conn.execute("UPDATE runs SET finished_at = ?, status = ?, exit_code = ?, note = ? WHERE id = ?", params![run.finished_at, run.status, code, note, run.run_id]));
+		let code = if record.exit_code < 0 { None } else { Some(record.exit_code) };
+		let note = if record.note.is_empty() { None } else { Some(record.note.clone()) };
+		report(conn.execute("UPDATE runs SET finished_at = ?, status = ?, exit_code = ?, note = ? WHERE id = ?", params![record.finished_at, record.status, code, note, record.run_id]));
 
 # Runs still marked "running" when the service starts were cut off by a stop or crash.
 fn void db_mark_interrupted(Database store)
@@ -38,7 +45,7 @@ fn void db_mark_interrupted(Database store)
 fn string db_last_status(Database store)
 	rust
 		let conn = store.0.lock().unwrap();
-		let found: rusqlite::Result<Option<String>> = conn.query_row("SELECT status FROM runs WHERE status NOT IN ('skipped', 'running') ORDER BY id DESC LIMIT 1", [], |row| row.get(0)).map(Some).or_else(|error| match error {
+		let found: rusqlite::Result<Option<String>> = conn.query_row("SELECT status FROM runs WHERE status NOT IN ('skipped', 'running') ORDER BY id DESC LIMIT 1", [], |table_row| table_row.get(0)).map(Some).or_else(|error| match error {
 			rusqlite::Error::QueryReturnedNoRows => Ok(None),
 			other => Err(other),
 		});
@@ -52,23 +59,24 @@ fn void db_request_run(Database store, int job_id)
 fn intList db_take_run_requests(Database store)
 	rust
 		let conn = store.0.lock().unwrap();
-		let ids: rusqlite::Result<Vec<i64>> = (|| {
+		// An immediately-run closure, so `?` can stop at the first database error and hand it back as one Result.
+		let request_ids: rusqlite::Result<Vec<i64>> = (|| {
 			let mut statement = conn.prepare("SELECT job_id FROM run_requests ORDER BY id")?;
-			let mapped = statement.query_map([], |row| row.get::<_, i64>(0))?;
+			let mapped = statement.query_map([], |table_row| table_row.get::<_, i64>(0))?;
 			let collected: rusqlite::Result<Vec<i64>> = mapped.collect();
 			let result = collected?;
 			conn.execute("DELETE FROM run_requests", [])?;
 			Ok(result)
 		})();
-		report(ids)
+		report(request_ids)
 
-fn void db_set_meta(Database store, string key, int value)
+fn void db_set_meta(Database store, string meta_key, int value)
 	rust
 		let conn = store.0.lock().unwrap();
-		report(conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", params![key, value]));
+		report(conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", params![meta_key, value]));
 
 # 0 when the key was never set.
-fn int db_get_meta(Database store, string key)
+fn int db_get_meta(Database store, string meta_key)
 	rust
 		let conn = store.0.lock().unwrap();
-		conn.query_row("SELECT value FROM meta WHERE key = ?", params![key], |row| row.get::<_, i64>(0)).unwrap_or(0)
+		conn.query_row("SELECT value FROM meta WHERE key = ?", params![meta_key], |table_row| table_row.get::<_, i64>(0)).unwrap_or(0)

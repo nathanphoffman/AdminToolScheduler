@@ -3,34 +3,35 @@
 fn jobList db_list_jobs(Database store)
 	rust
 		let conn = store.0.lock().unwrap();
+		// An immediately-run closure, so `?` can stop at the first database error and hand it back as one Result.
 		let rows: rusqlite::Result<Vec<Job>> = (|| {
 			let mut statement = conn.prepare("SELECT id, name, cwd, command, sched_kind, sched_value, enabled, updated_at FROM jobs ORDER BY id")?;
-			let mapped = statement.query_map([], |row| job_from_row(row))?;
+			let mapped = statement.query_map([], |table_row| job_from_row(table_row))?;
 			let collected: rusqlite::Result<Vec<Job>> = mapped.collect();
 			collected
 		})();
 		report(rows)
 
-fn void db_insert_job(Database store, Job job)
+fn void db_insert_job(Database store, Job target_job)
 	rust
 		let conn = store.0.lock().unwrap();
 		let now_time = n_now();
-		report(conn.execute("INSERT INTO jobs (name, cwd, command, sched_kind, sched_value, enabled, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)", params![job.name, job.cwd, job.command, job.sched_kind, job.sched_value, job.enabled as i64, now_time]));
+		report(conn.execute("INSERT INTO jobs (name, cwd, command, sched_kind, sched_value, enabled, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)", params![target_job.name, target_job.folder, target_job.command, target_job.sched_kind, target_job.sched_value, target_job.enabled as i64, now_time]));
 
-fn void db_update_job(Database store, Job job)
+fn void db_update_job(Database store, Job target_job)
 	rust
 		let conn = store.0.lock().unwrap();
 		let now_time = n_now();
-		report(conn.execute("UPDATE jobs SET name = ?, cwd = ?, command = ?, sched_kind = ?, sched_value = ?, enabled = ?, updated_at = ? WHERE id = ?", params![job.name, job.cwd, job.command, job.sched_kind, job.sched_value, job.enabled as i64, now_time, job.job_id]));
+		report(conn.execute("UPDATE jobs SET name = ?, cwd = ?, command = ?, sched_kind = ?, sched_value = ?, enabled = ?, updated_at = ? WHERE id = ?", params![target_job.name, target_job.folder, target_job.command, target_job.sched_kind, target_job.sched_value, target_job.enabled as i64, now_time, target_job.job_id]));
 
 # A job with job_id 0 has never been saved, so it is a new row; anything else updates its row.
-fn void db_save_job(Database store, Job job)
-	(job_id) in job
+fn void db_save_job(Database store, Job target_job)
+	(job_id) in target_job
 
 	if job_id is 0
-		db_insert_job(store, job)
+		db_insert_job(store, target_job)
 	else
-		db_update_job(store, job)
+		db_update_job(store, target_job)
 
 fn void db_delete_job(Database store, int job_id)
 	rust
@@ -42,27 +43,27 @@ fn void insert_default_jobs(Database store)
 	bool enabled = true
 
 	string name = "Proton Drive sync"
-	string cwd = "~/Code/ProtonDriveSync"
+	string folder = "~/Code/ProtonDriveSync"
 	string command = "npm start -- --once"
 	string sched_kind = "daily"
 	int sched_value = 120
-	Job proton = base with (name, cwd, command, sched_kind, sched_value, enabled)
+	Job proton = base with (name, folder, command, sched_kind, sched_value, enabled)
 	db_save_job(store, proton)
 
 	name = "GraphData prod sync"
-	cwd = "~/Code/GraphData"
+	folder = "~/Code/GraphData"
 	command = "just sync-prod"
 	sched_kind = "interval"
 	sched_value = 60
-	Job prod_sync = base with (name, cwd, command, sched_kind, sched_value, enabled)
+	Job prod_sync = base with (name, folder, command, sched_kind, sched_value, enabled)
 	db_save_job(store, prod_sync)
 
 	name = "Line quality check + sync"
-	cwd = "~/Code/GraphData"
+	folder = "~/Code/GraphData"
 	command = "just refresh-local-line-quality\njust sync-prod"
 	sched_kind = "daily"
 	sched_value = 60
-	Job line_quality = base with (name, cwd, command, sched_kind, sched_value, enabled)
+	Job line_quality = base with (name, folder, command, sched_kind, sched_value, enabled)
 	db_save_job(store, line_quality)
 
 fn void seed_default_jobs(Database store)

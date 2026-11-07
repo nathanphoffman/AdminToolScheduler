@@ -10,9 +10,12 @@ rust
 	pub struct Database(pub std::sync::Arc<std::sync::Mutex<Connection>>);
 
 	pub fn data_dir() -> std::path::PathBuf {
-		let dir = dirs::data_dir().unwrap_or_else(|| std::path::PathBuf::from(".")).join("jobrunner");
-		let _ = std::fs::create_dir_all(dir.join("logs"));
-		dir
+		// If the system has no data folder, falling back to the current folder is fine: the service must still start.
+		let data_folder = dirs::data_dir().unwrap_or_else(|| std::path::PathBuf::from(".")).join("jobrunner");
+		if let Err(error) = std::fs::create_dir_all(data_folder.join("logs")) {
+			eprintln!("job runner: could not create the logs folder: {error}");
+		}
+		data_folder
 	}
 
 	// Database errors are printed, never hidden; the caller gets an empty default so the loop keeps going.
@@ -26,30 +29,30 @@ rust
 		}
 	}
 
-	fn job_from_row(row: &rusqlite::Row) -> rusqlite::Result<Job> {
+	fn job_from_row(table_row: &rusqlite::Row) -> rusqlite::Result<Job> {
 		Ok(Job {
-			job_id: row.get(0)?,
-			name: row.get(1)?,
-			cwd: row.get(2)?,
-			command: row.get(3)?,
-			sched_kind: row.get(4)?,
-			sched_value: row.get(5)?,
-			enabled: row.get::<_, i64>(6)? != 0,
-			updated_at: row.get(7)?,
+			job_id: table_row.get(0)?,
+			name: table_row.get(1)?,
+			folder: table_row.get(2)?,
+			command: table_row.get(3)?,
+			sched_kind: table_row.get(4)?,
+			sched_value: table_row.get(5)?,
+			enabled: table_row.get::<_, i64>(6)? != 0,
+			updated_at: table_row.get(7)?,
 		})
 	}
 
-	fn run_from_row(row: &rusqlite::Row) -> rusqlite::Result<Run> {
+	fn run_from_row(table_row: &rusqlite::Row) -> rusqlite::Result<Run> {
 		Ok(Run {
-			run_id: row.get(0)?,
-			job_id: row.get(1)?,
-			job_name: row.get(2)?,
-			started_at: row.get(3)?,
-			finished_at: row.get::<_, Option<i64>>(4)?.unwrap_or(0),
-			status: row.get(5)?,
-			exit_code: row.get::<_, Option<i64>>(6)?.unwrap_or(-1),
-			trigger_kind: row.get(7)?,
-			note: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+			run_id: table_row.get(0)?,
+			job_id: table_row.get(1)?,
+			job_name: table_row.get(2)?,
+			started_at: table_row.get(3)?,
+			finished_at: table_row.get::<_, Option<i64>>(4)?.unwrap_or(0),
+			status: table_row.get(5)?,
+			exit_code: table_row.get::<_, Option<i64>>(6)?.unwrap_or(-1),
+			trigger_kind: table_row.get(7)?,
+			note: table_row.get::<_, Option<String>>(8)?.unwrap_or_default(),
 		})
 	}
 

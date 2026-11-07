@@ -1,18 +1,19 @@
 # Pure scheduling rules: when a job is next due, when a run counts as missed, how to word a schedule.
 
-fn int schedule_next_due(Job job, int from_time)
-	(sched_kind, sched_value) in job
+fn int schedule_next_due(Job target_job, int from_time)
+	(sched_kind, sched_value) in target_job
 
 	if sched_kind is "daily"
 		return time_next_daily(sched_value, from_time)
 
 	int minutes = sched_value
+
 	if minutes < 1
 		minutes = 1
+
 	int seconds = minutes * 60
 
 	return from_time + seconds
-
 
 # A run this many seconds past its due time means the computer was asleep or off, so it is skipped.
 fn bool schedule_is_late(int now_time, int due_time)
@@ -21,36 +22,39 @@ fn bool schedule_is_late(int now_time, int due_time)
 
 	return late > LATE_LIMIT_SECONDS
 
-
-fn string schedule_text(Job job)
-	(sched_kind, sched_value) in job
+# The schedule in words, like 'Daily at 02:00' or 'Every 2 hours'.
+fn string schedule_text(Job target_job)
+	(sched_kind, sched_value) in target_job
 
 	if sched_kind is "daily"
 		string clock = clock_text(sched_value)
+
 		return s_join(["Daily at ", clock])
 
 	int hours = sched_value / 60
 	int leftover = sched_value % 60
+
 	if leftover is 0 and hours is 1
 		return "Every hour"
+
 	if leftover is 0
 		string hour_count = c_int_to_string(hours)
+
 		return s_join(["Every ", hour_count, " hours"])
 
 	string minute_count = c_int_to_string(sched_value)
 
 	return s_join(["Every ", minute_count, " min"])
 
-
 fn Job blank_job()
 	int job_id = 0
 	string name = ""
-	string cwd = "~"
+	string folder = "~"
 	string command = ""
 	string sched_kind = "interval"
 	int sched_value = 60
 	bool enabled = false
 	int updated_at = 0
-	Job blank = (job_id, name, cwd, command, sched_kind, sched_value, enabled, updated_at)
+	Job blank = (job_id, name, folder, command, sched_kind, sched_value, enabled, updated_at)
 
 	return blank

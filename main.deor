@@ -6,6 +6,7 @@ rust
 	#[path = "../rust/ui.rs"]
 	mod ui;
 
+# Starts the background service by default; 'ui' opens only the window (the tray icon launches it).
 fn void main()
 	(first) in args()
 

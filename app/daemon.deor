@@ -2,6 +2,7 @@
 
 fn void daemon_run()
 	bool locked = instance_lock_acquire()
+
 	if not locked
 		crash("The job runner is already running.")
 
@@ -12,14 +13,14 @@ fn void daemon_run()
 
 	dueList entries = empty
 	int pause = 2
+
 	for if true
 		entries = scheduler_tick(store, entries)
 		publish_status(store, entries)
 		sleep_seconds(pause)
 
-
 fn void ui_run()
 	rust
-		if let Err(error) = ui::run() {
+		if let Err(error) = ui::show_window() {
 			eprintln!("{error:#}");
 		}
