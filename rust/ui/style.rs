@@ -33,16 +33,23 @@ pub fn status_color(status: &str) -> Color32 {
     }
 }
 
-// The word shown for a run's status.
+const STATUS_LABELS: [(&str, &str); 5] = [
+    (STATUS_OK, "OK"),
+    (STATUS_FAILED, "FAILED"),
+    (STATUS_RUNNING, "Running"),
+    (STATUS_INTERRUPTED, "Interrupted"),
+    (STATUS_SKIPPED, "Skipped"),
+];
+
+// The word shown for a run's status; "?" if it is not one we know.
 pub fn status_label(status: &str) -> &'static str {
-    match status {
-        STATUS_OK => "OK",
-        STATUS_FAILED => "FAILED",
-        STATUS_RUNNING => "Running",
-        STATUS_INTERRUPTED => "Interrupted",
-        STATUS_SKIPPED => "Skipped",
-        _ => "?",
+    for (name, label) in STATUS_LABELS {
+        if name == status {
+            return label;
+        }
     }
+
+    "?"
 }
 
 /// How long a run took, or has taken so far if it is still going.

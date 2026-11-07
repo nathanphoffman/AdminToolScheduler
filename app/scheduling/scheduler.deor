@@ -14,8 +14,8 @@ fn DueEntry entry_for_job(dueList entries, Job target_job)
 
 	return fresh_entry(target_job, now_time)
 
-# Queues the job to run, or records a skip when the same job is still running from before.
-fn void start_or_skip(Database store, Job target_job, string trigger)
+# Queues the job to run; if the same job is still running from before, records a skip instead.
+fn void start_unless_busy(Database store, Job target_job, string trigger)
 	unsafe_macro_run use_skip_notes
 
 	(job_id) in target_job
@@ -47,7 +47,7 @@ fn DueEntry run_if_due(Database store, Job target_job, DueEntry entry)
 		db_insert_skipped(store, target_job, SKIP_ASLEEP_NOTE)
 	else
 		string trigger = "schedule"
-		start_or_skip(store, target_job, trigger)
+		start_unless_busy(store, target_job, trigger)
 
 	return next
 
@@ -61,7 +61,7 @@ fn void handle_run_requests(Database store, jobList jobs)
 
 			if job_id is requested_id
 				string trigger = "manual"
-				start_or_skip(store, target_job, trigger)
+				start_unless_busy(store, target_job, trigger)
 
 fn dueList scheduler_tick(Database store, dueList entries)
 	jobList jobs = db_list_jobs(store)

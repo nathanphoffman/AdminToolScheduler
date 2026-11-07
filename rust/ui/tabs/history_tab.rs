@@ -4,7 +4,6 @@ use super::run_details;
 use super::run_list::run_list;
 use super::style::SPACE_SMALL;
 use super::App;
-use crate::Job;
 use eframe::egui;
 
 const LIST_WIDTH: f32 = 340.0;
@@ -49,13 +48,5 @@ fn filter_picker(state: &mut App, screen: &mut egui::Ui) {
     if new_filter != state.view.filter_job {
         state.view.filter_job = new_filter;
         state.snapshot.mark_stale();
-    }
-}
-
-fn filter_choices(choices: &mut egui::Ui, jobs: &[Job], selection: &mut Option<i64>) {
-    choices.selectable_value(selection, None, ALL_JOBS);
-
-    for target_job in jobs {
-        choices.selectable_value(selection, Some(target_job.job_id), &target_job.name);
     }
 }

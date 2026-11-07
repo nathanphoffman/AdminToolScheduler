@@ -32,6 +32,7 @@ impl TrayStatus {
     }
 }
 
+// The dot colour for each tray state: green while a job runs, red after a failure, blue otherwise.
 fn status_color(status: TrayStatus) -> (u8, u8, u8) {
     match status {
         TrayStatus::Running => RUNNING_GREEN,

@@ -3,7 +3,8 @@
 fn void db_request_run(Database store, int job_id)
 	rust
 		let conn = store.0.lock().unwrap();
-		report(conn.execute("INSERT INTO run_requests (job_id) VALUES (?)", params![job_id]));
+		let queued = conn.execute("INSERT INTO run_requests (job_id) VALUES (?)", params![job_id]);
+		report(queued);
 
 fn intList db_take_run_requests(Database store)
 	rust

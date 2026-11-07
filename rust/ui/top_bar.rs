@@ -1,5 +1,6 @@
 //! The strip across the top of the window: the two tabs, and whether the background service is alive.
 
+use super::snapshot::Snapshot;
 use super::style::{GREEN, RED, SPACE_SMALL};
 use super::{App, Tab};
 use eframe::egui::{self, RichText};
@@ -16,7 +17,7 @@ pub fn draw_top_bar(state: &mut App, screen: &mut egui::Ui) {
 
             // Right-to-left layout, so the status text hugs the window's right edge.
             strip.with_layout(egui::Layout::right_to_left(egui::Align::Center), |status| {
-                service_status(state.snapshot.daemon_alive, status);
+                service_status(&state.snapshot, status);
             });
         });
 
@@ -24,8 +25,8 @@ pub fn draw_top_bar(state: &mut App, screen: &mut egui::Ui) {
     });
 }
 
-fn service_status(daemon_alive: bool, screen: &mut egui::Ui) {
-    if daemon_alive {
+fn service_status(snapshot: &Snapshot, screen: &mut egui::Ui) {
+    if snapshot.daemon_alive {
         screen.label(RichText::new("● Background service running").color(GREEN));
     } else {
         screen.label(RichText::new("● Background service NOT running - nothing will be scheduled").color(RED));

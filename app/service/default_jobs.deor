@@ -3,44 +3,43 @@
 fn Job proton_drive_job(Job base)
 	unsafe_macro_run use_schedule_values
 
-	bool enabled = true
 	string name = "Proton Drive sync"
 	string folder = "~/Code/ProtonDriveSync"
 	string command = "npm start -- --once"
 	string sched_kind = SCHEDULE_DAILY
 	int sched_value = 2 * MINUTES_PER_HOUR
-	Job built = base with (name, folder, command, sched_kind, sched_value, enabled)
+	Job built = base with (name, folder, command, sched_kind, sched_value)
 
 	return built
 
 fn Job prod_sync_job(Job base)
 	unsafe_macro_run use_schedule_values
 
-	bool enabled = true
 	string name = "GraphData prod sync"
 	string folder = "~/Code/GraphData"
 	string command = "just sync-prod"
 	string sched_kind = SCHEDULE_INTERVAL
 	int sched_value = DEFAULT_INTERVAL_MINUTES
-	Job built = base with (name, folder, command, sched_kind, sched_value, enabled)
+	Job built = base with (name, folder, command, sched_kind, sched_value)
 
 	return built
 
 fn Job line_quality_job(Job base)
 	unsafe_macro_run use_schedule_values
 
-	bool enabled = true
 	string name = "Line quality check + sync"
 	string folder = "~/Code/GraphData"
 	string command = "just refresh-local-line-quality\njust sync-prod"
 	string sched_kind = SCHEDULE_DAILY
 	int sched_value = MINUTES_PER_HOUR
-	Job built = base with (name, folder, command, sched_kind, sched_value, enabled)
+	Job built = base with (name, folder, command, sched_kind, sched_value)
 
 	return built
 
 fn void insert_default_jobs(Database store)
-	Job base = blank_job()
+	bool enabled = true
+	Job blank = blank_job()
+	Job base = blank with (enabled)
 	Job proton = proton_drive_job(base)
 	Job prod_sync = prod_sync_job(base)
 	Job line_quality = line_quality_job(base)
