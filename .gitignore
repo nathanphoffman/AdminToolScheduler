@@ -1,0 +1,9 @@
+/target
+
+# secrets and local data
+.env
+.env.*
+*.db
+*.db-wal
+*.db-shm
+*.log
