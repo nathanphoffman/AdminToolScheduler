@@ -1,0 +1,74 @@
+# Running a shell command and copying everything it prints into a log file.
+# run_command returns the command's exit code, -1 if a signal stopped it, -2 if it could not start.
+
+rust
+	const KILLED_BY_SIGNAL: i64 = -1;
+	const COULD_NOT_START: i64 = -2;
+	const COPY_BUFFER_BYTES: usize = 4096;
+
+	// A failed log write must not stop the job, but it must not vanish either, so it is printed.
+	fn report_io<T>(result: std::io::Result<T>, action: &str) {
+		if let Err(error) = result {
+			eprintln!("job runner: {action}: {error}");
+		}
+	}
+
+	fn open_log_file(log_path: &str) -> std::fs::File {
+		std::fs::OpenOptions::new().append(true).create(true).open(log_path).expect("could not open the run log")
+	}
+
+	// Stdout and stderr are folded together (exec 2>&1) so the log keeps the real order of messages.
+	// `set -e` stops a multi-line job at the first line that fails.
+	fn spawn_shell(command: &str, folder: &str) -> std::io::Result<std::process::Child> {
+		use std::process::{Command, Stdio};
+
+		let script = format!("exec 2>&1\nset -e\n{}\n", command);
+		Command::new("bash").arg("-c").arg(&script).current_dir(folder).stdin(Stdio::null()).stdout(Stdio::piped()).spawn()
+	}
+
+	fn copy_output_to_log(child: &mut std::process::Child, log_file: &mut std::fs::File) {
+		use std::io::{Read, Write};
+
+		let mut output = child.stdout.take().expect("the child's stdout was piped");
+		let mut buffer = [0u8; COPY_BUFFER_BYTES];
+
+		loop {
+			match output.read(&mut buffer) {
+				Ok(0) => break,
+				Err(error) => {
+					eprintln!("job runner: reading the job's output: {error}");
+					break;
+				}
+				Ok(count) => {
+					report_io(log_file.write_all(&buffer[..count]), "writing job output to the run log");
+					report_io(log_file.flush(), "flushing the run log");
+				}
+			}
+		}
+	}
+
+	fn exit_code_of(child: &mut std::process::Child) -> i64 {
+		match child.wait() {
+			Ok(status) => status.code().map(|code| code as i64).unwrap_or(KILLED_BY_SIGNAL),
+			Err(error) => {
+				eprintln!("job runner: waiting for the job to finish: {error}");
+				KILLED_BY_SIGNAL
+			}
+		}
+	}
+
+fn int run_command(string folder, string command, string log_path)
+	rust
+		use std::io::Write;
+
+		let mut log_file = open_log_file(&log_path);
+		let mut child = match spawn_shell(&command, &folder) {
+			Ok(child) => child,
+			Err(error) => {
+				report_io(writeln!(log_file, "Could not start the job: {error} (folder: {folder})"), "writing the start failure to the run log");
+				return COULD_NOT_START;
+			}
+		};
+
+		copy_output_to_log(&mut child, &mut log_file);
+		exit_code_of(&mut child)

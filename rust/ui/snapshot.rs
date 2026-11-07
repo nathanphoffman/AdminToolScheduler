@@ -1,6 +1,7 @@
 //! What the window shows right now: the data loaded from the database, and which run's log is open.
 
 use crate::{Database, Job, Run};
+use super::style::{STATUS_RUNNING, STATUS_SKIPPED};
 use std::time::{Duration, Instant};
 
 const HEARTBEAT_FRESH_SECONDS: i64 = 15;
@@ -40,7 +41,7 @@ impl Snapshot {
 
     /// The newest run of a job that actually ran (skipped ones do not count).
     pub fn latest_run_of(&self, job_id: i64) -> Option<&Run> {
-        self.runs.iter().find(|past_run| past_run.job_id == job_id && past_run.status != "skipped")
+        self.runs.iter().find(|past_run| past_run.job_id == job_id && past_run.status != STATUS_SKIPPED)
     }
 
     pub fn run_by_id(&self, run_id: i64) -> Option<&Run> {
@@ -68,7 +69,7 @@ impl View {
 
     pub fn refresh_log(&mut self, snapshot: &Snapshot) {
         let Some(run_id) = self.selected_run else { return };
-        let finished = snapshot.run_by_id(run_id).map(|past_run| past_run.status != "running").unwrap_or(true);
+        let finished = snapshot.run_by_id(run_id).map(|past_run| past_run.status != STATUS_RUNNING).unwrap_or(true);
 
         // A finished log is read once; a running one is read again every refresh to follow its output.
         if self.log_state != Some((run_id, finished)) || !finished {

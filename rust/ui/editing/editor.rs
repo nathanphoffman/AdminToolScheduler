@@ -47,7 +47,11 @@ impl Editor {
 
     /// Opens the editor on a job, filling the schedule boxes from its saved schedule.
     pub fn begin(&mut self, target_job: Job) {
-        *self = Editor::blank();
+        self.error = None;
+        self.hour = DEFAULT_HOUR.into();
+        self.minute = DEFAULT_MINUTE.into();
+        self.number = "1".into();
+        self.in_hours = true;
 
         if target_job.sched_kind == DAILY {
             self.hour = format!("{:02}", target_job.sched_value / MINUTES_PER_HOUR);

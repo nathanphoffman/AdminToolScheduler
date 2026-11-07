@@ -1,5 +1,9 @@
 # Clock helpers. Anything that needs the machine's local time zone is wrapped here.
 
+rust
+	const CLOCK_MINUTES_PER_HOUR: i64 = 60;
+	const CLOCK_HOURS_PER_DAY: i64 = 24;
+
 fn string time_format(int stamp)
 	rust
 		use chrono::TimeZone;
@@ -7,14 +11,14 @@ fn string time_format(int stamp)
 
 fn string clock_text(int minutes)
 	rust
-		format!("{:02}:{:02}", minutes / 60, minutes % 60)
+		format!("{:02}:{:02}", minutes / CLOCK_MINUTES_PER_HOUR, minutes % CLOCK_MINUTES_PER_HOUR)
 
 # The next time the local clock shows `minutes` after midnight, strictly after from_time.
 fn int time_next_daily(int minutes, int from_time)
 	rust
 		use chrono::{Duration, Local, NaiveTime, TimeZone};
 		let from = Local.timestamp_opt(from_time, 0).single().unwrap_or_else(Local::now);
-		let wanted = NaiveTime::from_hms_opt((minutes / 60) as u32 % 24, (minutes % 60) as u32, 0).unwrap();
+		let wanted = NaiveTime::from_hms_opt((minutes / CLOCK_MINUTES_PER_HOUR % CLOCK_HOURS_PER_DAY) as u32, (minutes % CLOCK_MINUTES_PER_HOUR) as u32, 0).unwrap();
 		let today = from.date_naive().and_time(wanted);
 		let mut candidate = Local.from_local_datetime(&today).earliest().unwrap_or(from);
 		if candidate <= from {

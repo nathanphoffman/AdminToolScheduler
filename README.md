@@ -13,7 +13,7 @@ The logic is written in [Deor](https://github.com/nathanphoffman/DeorLang), whic
 
 | Folder | What is in it |
 |---|---|
-| `app/` | Deor source: the job and run records, scheduling rules, the run flow, and the SQLite functions |
+| `app/` | Deor source. `main.deor` and `imports.deor` start things; the rest is grouped by job: `data/` (records, constants, SQLite), `scheduling/` (when jobs are due), `running/` (starting commands and writing logs), `service/` (the loop and tray status) |
 | `rust/` | Hand-written Rust: the window (`ui.rs`, `ui/`) and the tray icon (`tray.rs`, `tray/`) |
 | `lib/` | Deor's standard library, copied in from the Deor install |
 | `build/` | The generated Rust (git-ignored). Edit the `.deor` files, never this |

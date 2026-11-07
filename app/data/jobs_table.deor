@@ -37,38 +37,3 @@ fn void db_delete_job(Database store, int job_id)
 	rust
 		let conn = store.0.lock().unwrap();
 		report(conn.execute("DELETE FROM jobs WHERE id = ?", params![job_id]));
-
-fn void insert_default_jobs(Database store)
-	Job base = blank_job()
-	bool enabled = true
-
-	string name = "Proton Drive sync"
-	string folder = "~/Code/ProtonDriveSync"
-	string command = "npm start -- --once"
-	string sched_kind = "daily"
-	int sched_value = 120
-	Job proton = base with (name, folder, command, sched_kind, sched_value, enabled)
-	db_save_job(store, proton)
-
-	name = "GraphData prod sync"
-	folder = "~/Code/GraphData"
-	command = "just sync-prod"
-	sched_kind = "interval"
-	sched_value = 60
-	Job prod_sync = base with (name, folder, command, sched_kind, sched_value, enabled)
-	db_save_job(store, prod_sync)
-
-	name = "Line quality check + sync"
-	folder = "~/Code/GraphData"
-	command = "just refresh-local-line-quality\njust sync-prod"
-	sched_kind = "daily"
-	sched_value = 60
-	Job line_quality = base with (name, folder, command, sched_kind, sched_value, enabled)
-	db_save_job(store, line_quality)
-
-fn void seed_default_jobs(Database store)
-	jobList existing = db_list_jobs(store)
-	int existing_count = len(existing)
-
-	if existing_count is 0
-		insert_default_jobs(store)

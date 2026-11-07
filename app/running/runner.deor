@@ -1,0 +1,69 @@
+# One run of one job: record it, run the command, write the log, record how it ended.
+
+# A new run record: it starts out "running", and the caller stamps when it started.
+fn Run run_record(Job target_job, string trigger_kind, int started_at)
+	unsafe_macro_run use_run_words
+
+	(job_id, name) in target_job
+
+	int run_id = 0
+	string job_name = name
+	string status = RUN_RUNNING
+	int finished_at = 0
+	int exit_code = -1
+	string note = ""
+	Run record = (run_id, job_id, job_name, started_at, finished_at, status, exit_code, trigger_kind, note)
+
+	return record
+
+# Turns the command's exit code and failure note into the finished record.
+fn Run finished_run(Run started, int exit_code, string note)
+	unsafe_macro_run use_run_words
+
+	string status = RUN_OK
+
+	if exit_code is not 0
+		status = RUN_FAILED
+
+	int finished_at = n_now()
+	Run finished = started with (status, note, exit_code, finished_at)
+
+	return finished
+
+# A plain-English reason for a failed run, from its exit code ("" when it succeeded).
+fn string failure_note(int exit_code)
+	const int SIGNAL_KILLED = -1
+	const int NOT_STARTED = -2
+
+	if exit_code is 0
+		return ""
+
+	if exit_code is SIGNAL_KILLED
+		return "Failed: the command was stopped by a signal"
+
+	if exit_code is NOT_STARTED
+		return "Failed: the command could not be started (check the folder)"
+
+	string code_text = c_int_to_string(exit_code)
+
+	return s_join(["Failed: the command exited with code ", code_text])
+
+fn void execute_job(Database store, Job target_job, string trigger)
+	(folder, command) in target_job
+
+	int started_at = n_now()
+	Run record = run_record(target_job, trigger, started_at)
+	int run_id = db_insert_run(store, record)
+	Run started = record with (run_id)
+
+	string log_path = log_file_path(run_id)
+	string header = log_header_text(target_job)
+	append_log(log_path, header)
+	string full_folder = expand_home(folder)
+	int exit_code = run_command(full_folder, command, log_path)
+
+	string note = failure_note(exit_code)
+	Run finished = finished_run(started, exit_code, note)
+	string footer = log_footer_text(finished)
+	append_log(log_path, footer)
+	db_finish_run(store, finished)

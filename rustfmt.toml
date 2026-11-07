@@ -1,0 +1,3 @@
+# Wide enough for egui layout chains, which read worse when wrapped.
+max_width = 140
+edition = "2021"

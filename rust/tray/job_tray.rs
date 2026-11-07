@@ -14,7 +14,7 @@ impl ksni::Tray for JobTray {
     }
 
     fn title(&self) -> String {
-        "Job Runner".into()
+        crate::APP_NAME.into()
     }
 
     fn icon_pixmap(&self) -> Vec<Icon> {
@@ -29,7 +29,7 @@ impl ksni::Tray for JobTray {
             TrayStatus::Idle => "Idle",
         };
 
-        ToolTip { title: "Job Runner".into(), description: description.into(), ..Default::default() }
+        ToolTip { title: crate::APP_NAME.into(), description: description.into(), ..Default::default() }
     }
 
     fn activate(&mut self, _horizontal: i32, _vertical: i32) {

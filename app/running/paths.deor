@@ -1,0 +1,19 @@
+# A job's folder may start with ~, which the shell would expand but a program starting a process does not.
+
+fn string home_directory()
+	rust
+		dirs::home_dir().map(|home| home.display().to_string()).unwrap_or_default()
+
+fn string expand_home(string path)
+	string tilde = "~"
+	bool has_tilde = s_starts_with(path, tilde)
+
+	if has_tilde
+		string home = home_directory()
+		int start = 1
+		int stop = len(path)
+		string rest = s_substring(path, start, stop)
+
+		return s_join([home, rest])
+
+	return path

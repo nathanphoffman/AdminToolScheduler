@@ -7,6 +7,11 @@ pub const GREEN: Color32 = Color32::from_rgb(70, 180, 90);
 pub const RED: Color32 = Color32::from_rgb(230, 80, 90);
 pub const AMBER: Color32 = Color32::from_rgb(230, 170, 50);
 pub const GREY: Color32 = Color32::from_rgb(150, 150, 150);
+pub const STATUS_OK: &str = "ok";
+pub const STATUS_FAILED: &str = "failed";
+pub const STATUS_RUNNING: &str = "running";
+pub const STATUS_INTERRUPTED: &str = "interrupted";
+pub const STATUS_SKIPPED: &str = "skipped";
 const RUNNING_BLUE: Color32 = Color32::from_rgb(90, 150, 240);
 
 pub const TITLE_SIZE: f32 = 16.0;
@@ -20,10 +25,10 @@ const LOG_BYTE_LIMIT: usize = 400_000;
 // The colour shown for a run's status; anything unknown is grey.
 pub fn status_color(status: &str) -> Color32 {
     match status {
-        "ok" => GREEN,
-        "failed" => RED,
-        "running" => RUNNING_BLUE,
-        "interrupted" => AMBER,
+        STATUS_OK => GREEN,
+        STATUS_FAILED => RED,
+        STATUS_RUNNING => RUNNING_BLUE,
+        STATUS_INTERRUPTED => AMBER,
         _ => GREY,
     }
 }
@@ -31,11 +36,11 @@ pub fn status_color(status: &str) -> Color32 {
 // The word shown for a run's status.
 pub fn status_label(status: &str) -> &'static str {
     match status {
-        "ok" => "OK",
-        "failed" => "FAILED",
-        "running" => "Running",
-        "interrupted" => "Interrupted",
-        "skipped" => "Skipped",
+        STATUS_OK => "OK",
+        STATUS_FAILED => "FAILED",
+        STATUS_RUNNING => "Running",
+        STATUS_INTERRUPTED => "Interrupted",
+        STATUS_SKIPPED => "Skipped",
         _ => "?",
     }
 }

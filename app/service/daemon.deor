@@ -10,6 +10,7 @@ fn void daemon_run()
 	db_mark_interrupted(store)
 	seed_default_jobs(store)
 	tray_start()
+	start_dispatcher()
 
 	dueList entries = empty
 	int pause = 2

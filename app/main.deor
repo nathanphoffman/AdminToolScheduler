@@ -1,6 +1,8 @@
-import "imports.deor"
+import "app/imports.deor"
 
 rust
+	pub const APP_NAME: &str = "Job Runner";
+
 	#[path = "../rust/tray.rs"]
 	mod tray;
 	#[path = "../rust/ui.rs"]

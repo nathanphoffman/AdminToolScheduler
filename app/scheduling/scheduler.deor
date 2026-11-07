@@ -1,15 +1,5 @@
 # The scheduling loop: every tick, start whatever is due, honour "Run now" clicks, and publish status.
 
-fn DueEntry fresh_entry(Job target_job, int now_time)
-	(job_id, updated_at) in target_job
-
-	int due_time = schedule_next_due(target_job, now_time)
-	int entry_job = job_id
-	int entry_updated = updated_at
-	DueEntry fresh = (entry_job, entry_updated, due_time)
-
-	return fresh
-
 # Reuses the remembered due time unless the job was edited since, which makes it start over.
 fn DueEntry entry_for_job(dueList entries, Job target_job)
 	(job_id, updated_at) in target_job
@@ -24,22 +14,23 @@ fn DueEntry entry_for_job(dueList entries, Job target_job)
 
 	return fresh_entry(target_job, now_time)
 
-fn void launch_job(Database store, Job target_job, string trigger)
-	(job_id, folder) in target_job
+# Queues the job to run, or records a skip when the same job is still running from before.
+fn void start_or_skip(Database store, Job target_job, string trigger)
+	unsafe_macro_run use_skip_notes
+
+	(job_id) in target_job
 
 	bool claimed = running_claim(job_id)
 
 	if claimed
-		# The folder is expanded here, once, so the thread that runs the job gets a ready-to-use path.
-		folder = expand_home(folder)
-		Job expanded = target_job with (folder)
-		spawn_job_thread(expanded, trigger)
+		enqueue_job(target_job, trigger)
 	else
-		string note = "Skipped: the previous run was still going"
-		record_skip(store, target_job, note)
+		db_insert_skipped(store, target_job, SKIP_BUSY_NOTE)
 
 # Starts the job if its time has come, or records a skip if the computer slept through it.
 fn DueEntry run_if_due(Database store, Job target_job, DueEntry entry)
+	unsafe_macro_run use_skip_notes
+
 	(enabled) in target_job
 	(due_time) in entry
 
@@ -53,11 +44,10 @@ fn DueEntry run_if_due(Database store, Job target_job, DueEntry entry)
 	bool late = schedule_is_late(now_time, due_time)
 
 	if late
-		string note = "Skipped: the computer was asleep or off at the scheduled time"
-		record_skip(store, target_job, note)
+		db_insert_skipped(store, target_job, SKIP_ASLEEP_NOTE)
 	else
 		string trigger = "schedule"
-		launch_job(store, target_job, trigger)
+		start_or_skip(store, target_job, trigger)
 
 	return next
 
@@ -71,7 +61,7 @@ fn void handle_run_requests(Database store, jobList jobs)
 
 			if job_id is requested_id
 				string trigger = "manual"
-				launch_job(store, target_job, trigger)
+				start_or_skip(store, target_job, trigger)
 
 fn dueList scheduler_tick(Database store, dueList entries)
 	jobList jobs = db_list_jobs(store)

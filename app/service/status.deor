@@ -8,22 +8,28 @@ fn void publish_next_run(Database store, DueEntry entry)
 	db_set_meta(store, meta_key, due_time)
 
 fn bool last_run_failed(Database store)
+	unsafe_macro_run use_run_words
+
 	string status = db_last_status(store)
-	bool failed = status is "failed"
+	bool failed = status is RUN_FAILED
 
 	return failed
 
 # The tray dot is green while anything runs, red if the newest finished run failed, otherwise blue.
 fn string tray_status_word()
+	unsafe_macro_run use_tray_words
+
 	int running = running_count()
 
 	if running > 0
-		return "running"
+		return TRAY_RUNNING
 
-	return "idle"
+	return TRAY_IDLE
 
 # Writes what the window and tray need: a heartbeat, each job's next run, and the tray colour.
 fn void publish_status(Database store, dueList entries)
+	unsafe_macro_run use_tray_words
+
 	string heartbeat_key = "heartbeat"
 	int now_time = n_now()
 	db_set_meta(store, heartbeat_key, now_time)
@@ -34,8 +40,8 @@ fn void publish_status(Database store, dueList entries)
 	string word = tray_status_word()
 	bool failed = last_run_failed(store)
 
-	if word is "idle" and failed
-		word = "failed"
+	if word is TRAY_IDLE and failed
+		word = TRAY_FAILED
 
 	tray_update(word)
 

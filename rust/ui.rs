@@ -1,16 +1,16 @@
 //! The window: a Jobs tab, a History tab and a job editor. It reads the same SQLite file as the
 //! background service and talks to it only through that file ("Run now" is a row in a queue table).
 
-#[path = "ui/editor.rs"]
+#[path = "ui/editing/editor.rs"]
 mod editor;
 
-#[path = "ui/editor_window.rs"]
+#[path = "ui/editing/editor_window.rs"]
 mod editor_window;
 
-#[path = "ui/history_tab.rs"]
+#[path = "ui/tabs/history_tab.rs"]
 mod history_tab;
 
-#[path = "ui/jobs_tab.rs"]
+#[path = "ui/tabs/jobs_tab.rs"]
 mod jobs_tab;
 
 #[path = "ui/snapshot.rs"]
@@ -19,12 +19,26 @@ mod snapshot;
 #[path = "ui/style.rs"]
 mod style;
 
+#[path = "ui/top_bar.rs"]
+mod top_bar;
+
+#[path = "ui/tabs/run_list.rs"]
+mod run_list;
+
+#[path = "ui/tabs/run_details.rs"]
+mod run_details;
+
+#[path = "ui/tabs/job_title.rs"]
+mod job_title;
+
+#[path = "ui/editing/editor_form.rs"]
+mod editor_form;
+
 use crate::Database;
-use eframe::egui::{self, RichText};
+use eframe::egui;
 use editor::Editor;
 use snapshot::{Snapshot, View};
 use std::time::Duration;
-use style::{GREEN, RED, SPACE_SMALL};
 
 const WINDOW_SIZE: [f32; 2] = [960.0, 620.0];
 const REPAINT_INTERVAL: Duration = Duration::from_secs(1);
@@ -45,10 +59,8 @@ pub struct App {
 
 impl App {
     fn with_connection(conn: Database) -> Self {
-        let mut state = App { conn, tab: Tab::Jobs, snapshot: Snapshot::empty(), view: View::empty(), editor: Editor::blank() };
-        state.refresh();
-
-        state
+        // The snapshot starts out stale, so the first frame loads the data.
+        App { conn, tab: Tab::Jobs, snapshot: Snapshot::empty(), view: View::empty(), editor: Editor::blank() }
     }
 
     fn refresh(&mut self) {
@@ -63,30 +75,6 @@ impl App {
         self.view.select_run(run_id);
         self.snapshot.mark_stale();
     }
-
-    fn top_bar(&mut self, screen: &mut egui::Ui) {
-        // A strip across the top: tabs on the left, whether the background service is alive on the right.
-        egui::Panel::top("top").show(screen, |bar| {
-            bar.add_space(SPACE_SMALL);
-
-            // Everything in the strip sits on one line.
-            bar.horizontal(|strip| {
-                strip.selectable_value(&mut self.tab, Tab::Jobs, "Jobs");
-                strip.selectable_value(&mut self.tab, Tab::History, "History");
-
-                // Right-to-left layout, so the status text hugs the window's right edge.
-                strip.with_layout(egui::Layout::right_to_left(egui::Align::Center), |status| {
-                    if self.snapshot.daemon_alive {
-                        status.label(RichText::new("● Background service running").color(GREEN));
-                    } else {
-                        status.label(RichText::new("● Background service NOT running - nothing will be scheduled").color(RED));
-                    }
-                });
-            });
-
-            bar.add_space(SPACE_SMALL);
-        });
-    }
 }
 
 impl eframe::App for App {
@@ -98,25 +86,25 @@ impl eframe::App for App {
 
         screen.ctx().request_repaint_after(REPAINT_INTERVAL);
 
-        self.top_bar(screen);
+        top_bar::draw_top_bar(self, screen);
 
         match self.tab {
-            Tab::Jobs => jobs_tab::show(self, screen),
-            Tab::History => history_tab::show(self, screen),
+            Tab::Jobs => jobs_tab::draw_jobs_tab(self, screen),
+            Tab::History => history_tab::draw_history_tab(self, screen),
         }
 
         let context = screen.ctx().clone();
-        editor_window::show(self, &context);
+        editor_window::draw_editor(self, &context);
     }
 }
 
 pub fn show_window() -> anyhow::Result<()> {
     let conn = crate::db_open();
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size(WINDOW_SIZE).with_title("Job Runner"),
+        viewport: egui::ViewportBuilder::default().with_inner_size(WINDOW_SIZE).with_title(crate::APP_NAME),
         ..Default::default()
     };
 
-    eframe::run_native("Job Runner", options, Box::new(|_creation| Ok(Box::new(App::with_connection(conn)))))
+    eframe::run_native(crate::APP_NAME, options, Box::new(|_creation| Ok(Box::new(App::with_connection(conn)))))
         .map_err(|error| anyhow::anyhow!("{error}"))
 }

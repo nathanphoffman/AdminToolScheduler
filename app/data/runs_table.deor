@@ -51,32 +51,9 @@ fn string db_last_status(Database store)
 		});
 		report(found).unwrap_or_default()
 
-fn void db_request_run(Database store, int job_id)
+# A run that never started (the computer slept through it, or the same job was still running).
+fn void db_insert_skipped(Database store, Job target_job, string note)
 	rust
 		let conn = store.0.lock().unwrap();
-		report(conn.execute("INSERT INTO run_requests (job_id) VALUES (?)", params![job_id]));
-
-fn intList db_take_run_requests(Database store)
-	rust
-		let conn = store.0.lock().unwrap();
-		// An immediately-run closure, so `?` can stop at the first database error and hand it back as one Result.
-		let request_ids: rusqlite::Result<Vec<i64>> = (|| {
-			let mut statement = conn.prepare("SELECT job_id FROM run_requests ORDER BY id")?;
-			let mapped = statement.query_map([], |table_row| table_row.get::<_, i64>(0))?;
-			let collected: rusqlite::Result<Vec<i64>> = mapped.collect();
-			let result = collected?;
-			conn.execute("DELETE FROM run_requests", [])?;
-			Ok(result)
-		})();
-		report(request_ids)
-
-fn void db_set_meta(Database store, string meta_key, int value)
-	rust
-		let conn = store.0.lock().unwrap();
-		report(conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", params![meta_key, value]));
-
-# 0 when the key was never set.
-fn int db_get_meta(Database store, string meta_key)
-	rust
-		let conn = store.0.lock().unwrap();
-		conn.query_row("SELECT value FROM meta WHERE key = ?", params![meta_key], |table_row| table_row.get::<_, i64>(0)).unwrap_or(0)
+		let now_time = chrono::Local::now().timestamp();
+		report(conn.execute("INSERT INTO runs (job_id, job_name, started_at, finished_at, status, trigger_kind, note) VALUES (?, ?, ?, ?, 'skipped', 'schedule', ?)", params![target_job.job_id, target_job.name, now_time, now_time, note]));

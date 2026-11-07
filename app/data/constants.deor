@@ -1,0 +1,24 @@
+# Words and numbers used in more than one place. Deor has no global constants, so each is
+# declared in an unsafe_macro that a function runs on its first line to bring them into scope.
+
+unsafe_macro use_run_words
+	const string RUN_RUNNING = "running"
+	const string RUN_FAILED = "failed"
+	const string RUN_SKIPPED = "skipped"
+	const string RUN_OK = "ok"
+
+unsafe_macro use_tray_words
+	const string TRAY_IDLE = "idle"
+	const string TRAY_RUNNING = "running"
+	const string TRAY_FAILED = "failed"
+
+unsafe_macro use_schedule_values
+	const string SCHEDULE_DAILY = "daily"
+	const string SCHEDULE_INTERVAL = "interval"
+	const int MINUTES_PER_HOUR = 60
+	const int SECONDS_PER_MINUTE = 60
+	const int DEFAULT_INTERVAL_MINUTES = 60
+
+unsafe_macro use_skip_notes
+	const string SKIP_ASLEEP_NOTE = "Skipped: the computer was asleep or off at the scheduled time"
+	const string SKIP_BUSY_NOTE = "Skipped: the previous run was still going"

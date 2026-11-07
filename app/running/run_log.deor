@@ -1,0 +1,32 @@
+# The text written into a run's log file: a header, the job's output (written elsewhere), and a footer.
+
+# A log line that cannot be written is reported, since a missing log hides why a run failed.
+fn void append_log(string log_path, string text)
+	rust
+		use std::io::Write;
+
+		report_io(std::fs::OpenOptions::new().append(true).create(true).open(&log_path).and_then(|mut log_file| log_file.write_all(text.as_bytes())), "writing to the run log");
+
+fn string log_header_text(Job target_job)
+	(name, folder, command) in target_job
+
+	int now_time = n_now()
+	string stamp = time_format(now_time)
+	string newline = "\n"
+	string prefixed = "\n$ "
+	string shown = s_replace(command, newline, prefixed)
+
+	return s_join(["[", stamp, "] Starting \"", name, "\" in ", folder, "\n$ ", shown, "\n\n"])
+
+fn string log_footer_text(Run finished)
+	unsafe_macro_run use_run_words
+
+	(status, note, finished_at) in finished
+
+	string stamp = time_format(finished_at)
+	string message = note
+
+	if status is RUN_OK
+		message = "Finished OK"
+
+	return s_join(["\n[", stamp, "] ", message, "\n"])

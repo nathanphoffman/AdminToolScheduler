@@ -1,0 +1,31 @@
+# The "Run now" request queue and the small meta table (heartbeat, next run times) that the window reads.
+
+fn void db_request_run(Database store, int job_id)
+	rust
+		let conn = store.0.lock().unwrap();
+		report(conn.execute("INSERT INTO run_requests (job_id) VALUES (?)", params![job_id]));
+
+fn intList db_take_run_requests(Database store)
+	rust
+		let conn = store.0.lock().unwrap();
+		// An immediately-run closure, so `?` can stop at the first database error and hand it back as one Result.
+		let request_ids: rusqlite::Result<Vec<i64>> = (|| {
+			let mut statement = conn.prepare("SELECT job_id FROM run_requests ORDER BY id")?;
+			let mapped = statement.query_map([], |table_row| table_row.get::<_, i64>(0))?;
+			let collected: rusqlite::Result<Vec<i64>> = mapped.collect();
+			let result = collected?;
+			conn.execute("DELETE FROM run_requests", [])?;
+			Ok(result)
+		})();
+		report(request_ids)
+
+fn void db_set_meta(Database store, string meta_key, int value)
+	rust
+		let conn = store.0.lock().unwrap();
+		report(conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", params![meta_key, value]));
+
+# 0 when the key was never set.
+fn int db_get_meta(Database store, string meta_key)
+	rust
+		let conn = store.0.lock().unwrap();
+		conn.query_row("SELECT value FROM meta WHERE key = ?", params![meta_key], |table_row| table_row.get::<_, i64>(0)).unwrap_or(0)

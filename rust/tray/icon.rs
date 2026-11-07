@@ -2,7 +2,10 @@
 
 use ksni::Icon;
 
+const NAME_RUNNING: &str = "running";
+const NAME_FAILED: &str = "failed";
 const ICON_SIZE: i32 = 24;
+const BYTES_PER_PIXEL: usize = 4;
 const CIRCLE_RADIUS: f32 = 10.0;
 const EDGE_WIDTH: f32 = 1.0;
 const SOLID_ALPHA: u8 = 255;
@@ -22,38 +25,47 @@ impl TrayStatus {
     /// Anything unrecognised counts as idle, so a typo upstream shows a calm icon rather than a wrong alarm.
     pub fn from_name(name: &str) -> TrayStatus {
         match name {
-            "running" => TrayStatus::Running,
-            "failed" => TrayStatus::Failed,
+            NAME_RUNNING => TrayStatus::Running,
+            NAME_FAILED => TrayStatus::Failed,
             _ => TrayStatus::Idle,
         }
     }
 }
 
-pub fn icon_for(status: TrayStatus) -> Icon {
-    let color = match status {
+fn status_color(status: TrayStatus) -> (u8, u8, u8) {
+    match status {
         TrayStatus::Running => RUNNING_GREEN,
         TrayStatus::Failed => FAILED_RED,
         TrayStatus::Idle => IDLE_BLUE,
-    };
+    }
+}
 
+/// How opaque a pixel is, given its distance from the middle: solid inside the circle, faint on its edge.
+fn pixel_alpha(distance: f32) -> u8 {
+    if distance <= CIRCLE_RADIUS {
+        SOLID_ALPHA
+    } else if distance <= CIRCLE_RADIUS + EDGE_WIDTH {
+        EDGE_ALPHA
+    } else {
+        0
+    }
+}
+
+/// Every pixel of the dot, as the four bytes (alpha, red, green, blue) the tray wants, in network byte order.
+fn circle_pixels(color: (u8, u8, u8)) -> Vec<u8> {
     let middle = (ICON_SIZE as f32 - 1.0) / 2.0;
-    let mut data = Vec::with_capacity((ICON_SIZE * ICON_SIZE * 4) as usize);
+    let mut data = Vec::with_capacity((ICON_SIZE * ICON_SIZE) as usize * BYTES_PER_PIXEL);
 
     for pixel_row in 0..ICON_SIZE {
         for column in 0..ICON_SIZE {
             let distance = ((column as f32 - middle).powi(2) + (pixel_row as f32 - middle).powi(2)).sqrt();
-            let alpha = if distance <= CIRCLE_RADIUS {
-                SOLID_ALPHA
-            } else if distance <= CIRCLE_RADIUS + EDGE_WIDTH {
-                EDGE_ALPHA
-            } else {
-                0
-            };
-
-            // The tray wants ARGB in network byte order.
-            data.extend_from_slice(&[alpha, color.0, color.1, color.2]);
+            data.extend_from_slice(&[pixel_alpha(distance), color.0, color.1, color.2]);
         }
     }
 
-    Icon { width: ICON_SIZE, height: ICON_SIZE, data }
+    data
+}
+
+pub fn icon_for(status: TrayStatus) -> Icon {
+    Icon { width: ICON_SIZE, height: ICON_SIZE, data: circle_pixels(status_color(status)) }
 }

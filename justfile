@@ -1,7 +1,7 @@
 # Turn the Deor source into Rust. Edit the .deor files, never build/main.rs.
 transpile:
     mkdir -p build
-    DEOR_LIB=lib deor main.deor build/main.rs
+    DEOR_LIB=lib deor app/main.deor build/main.rs
 
 # Transpile, then compile the release binary at target/release/jobrunner.
 build: transpile
